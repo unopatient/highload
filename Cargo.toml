@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+    "order-book"
+]
+
+[workspace.dependencies]
+
+indexmap = "2.1.0"
