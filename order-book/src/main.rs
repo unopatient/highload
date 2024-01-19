@@ -1,5 +1,3 @@
-#![feature(test)]
-
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Instant;
 
@@ -32,6 +30,15 @@ fn main() {
     let mut sign = 0;
     let mut num_a: u64 = 0;
     let mut num_b: u64= 0;
+
+    // matching every character, state
+    // takes too long to long to parse the integers
+    // we can parse line by line very quickly
+    // we need to keep a pointer of sorts tho
+    // also we can disqualify if num_b == 0 since that's a no op
+    // so for each integer, iterate and build it up BUT
+    // we also check every stage that the char is in our desired range 0x30 to 0x39
+    // we break if it isn't
 
     for &c in buf {
 
@@ -232,17 +239,4 @@ unsafe fn mmap_fd<'a>(fd: i32) -> &'a [u8] {
         panic!("mmap failed, errno {}", *__error());
     }
     std::slice::from_raw_parts(ptr, size as usize)
-}
-
-extern crate test;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use test::Bencher;
-
-    #[bench]
-    fn bench_main(b: &mut Bencher) {
-        b.iter(|| add_two(2));
-    }
 }

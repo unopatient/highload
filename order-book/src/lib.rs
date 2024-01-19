@@ -1,3 +1,5 @@
+#![feature(test)]
+
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Instant;
 
@@ -13,8 +15,9 @@ enum State {
     ParseNumB
 }
 
-fn main() {
-    let buf = unsafe { mmap_stdin() };
+fn run_for_benchmark_fsm() {
+    // let buf = unsafe { mmap_stdin() };
+    let buf: &[u8] = "+ 1137 100\n+ 1130 10\n+ 1130 50\n- 0\n+ 1150 200\n= 200".as_bytes();
 
     // BTreeMap of an LinkedList (IndexMap does not allow for the same size value!)
     // Price -> Sorted Orders
@@ -23,7 +26,7 @@ fn main() {
     // Delay sorting
     let mut price_to_order_queue: BTreeMap<u64, VecDeque<u64>> = BTreeMap::new();
 
-    let start = Instant::now();
+    // let start = Instant::now();
 
     let mut state = State::ParseSign;
 
@@ -48,7 +51,7 @@ fn main() {
             (State::ParseNumA, NEWLINE, EQUALS) => {
                 // let start = Instant::now();
 
-                take_liquidity(&mut price_to_order_queue, num_a);
+                // take_liquidity(&mut price_to_order_queue, num_a);
 
                 // let duration = start.elapsed();
                 // println!("Time elapsed in take_liquidity() is: {:?}", duration);
@@ -58,7 +61,7 @@ fn main() {
             (State::ParseNumA, NEWLINE, MINUS) => {
                 // let start = Instant::now();
 
-                remove_order(&mut price_to_order_queue, num_a);
+                // remove_order(&mut price_to_order_queue, num_a);
 
                 // let duration = start.elapsed();
                 // println!("Time elapsed in remove_order() is: {:?}", duration);
@@ -73,7 +76,7 @@ fn main() {
             (State::ParseNumB, NEWLINE, _) => {
                 // let start = Instant::now();
 
-                add_liquidity(&mut price_to_order_queue, num_a, num_b);
+                // add_liquidity(&mut price_to_order_queue, num_a, num_b);
 
                 // let duration = start.elapsed();
                 // println!("Time elapsed in add_liquidity() is: {:?}", duration);
@@ -87,11 +90,35 @@ fn main() {
         }
     }
 
-    let duration = start.elapsed();
-    println!("Time elapsed for parsing w/ book management is: {:?}", duration);
+    // let duration = start.elapsed();
+    // println!("Time elapsed for parsing w/ book management is: {:?}", duration);
 
     // println!("{}", take_liquidity(&mut price_to_order_queue, 100));
 }
+
+
+// Even the basic lines + split + getting first element takes twice as long as our parsing fsm
+fn run_for_benchmark_std() {
+
+    let buf: &str = "+ 1137 100\n+ 1130 10\n+ 1130 50\n- 0\n+ 1150 200\n= 200";
+
+    let mut price_to_order_queue: BTreeMap<u64, VecDeque<u64>> = BTreeMap::new();
+
+    let mut state = State::ParseSign;
+
+    let mut sign = 0;
+    let mut num_a: u64 = 0;
+    let mut num_b: u64 = 0;
+    // let mut num_b_str: Option<u8> = None;
+
+    for line in buf.lines() {
+        // println!("line: {}", line);
+        let mut line_split_iter = line.split(' ');
+
+        sign = line_split_iter.next().unwrap().as_bytes()[0];
+    }
+}
+
 
 fn add_liquidity(
     price_to_order_queue: &mut BTreeMap<u64, VecDeque<u64>>,
@@ -230,4 +257,22 @@ unsafe fn mmap_fd<'a>(fd: i32) -> &'a [u8] {
         panic!("mmap failed, errno {}", *__error());
     }
     std::slice::from_raw_parts(ptr, size as usize)
+}
+
+extern crate test;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+
+    #[bench]
+    fn bench_run_fsm(b: &mut Bencher) {
+        b.iter(|| run_for_benchmark_fsm());
+    }
+
+    #[bench]
+    fn bench_run_std(b: &mut Bencher) {
+        b.iter(|| run_for_benchmark_std());
+    }
 }
