@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Instant;
 
-// const PLUS: u8 = 0x2b;
+const PLUS: u8 = 0x2b;
 const MINUS: u8 = 0x2d;
 const EQUALS: u8 = 0x3d;
 const SPACE: u8 = 0x20;
@@ -15,10 +15,11 @@ enum State {
     ParseNumB
 }
 
-fn run_for_benchmark_fsm() {
+fn run_for_benchmark_by_line() {
     // let buf = unsafe { mmap_stdin() };
-    let buf: &[u8] = "+ 1137 100\n+ 1130 10\n+ 1130 50\n- 0\n+ 1150 200\n= 200".as_bytes();
+    let buf: &[u8] = "+ 1137 100\n+ 1130 10\n+ 1130 50\n- 0\n+ 1150 200\n= 200\n".as_bytes();
 
+    let buf_len = buf.len();
     // BTreeMap of an LinkedList (IndexMap does not allow for the same size value!)
     // Price -> Sorted Orders
 
@@ -26,11 +27,82 @@ fn run_for_benchmark_fsm() {
     // Delay sorting
     let mut price_to_order_queue: BTreeMap<u64, VecDeque<u64>> = BTreeMap::new();
 
-    // let start = Instant::now();
+    let mut sign: u8 = 0;
+    let mut num_a: u64 = 0;
+    let mut num_b: u64= 0;
+
+    // matching every character, state
+    // takes too long to long to parse the integers
+    // we can parse line by line very quickly
+    // we need to keep a pointer of sorts tho
+    // also we can disqualify if num_b == 0 since that's a no op
+    // so for each integer, iterate and build it up BUT
+    // we also check every stage that the char is in our desired range 0x30 to 0x39
+    // we break if it isn't
+
+    let mut i = 0;
+
+    while i < buf_len {
+        // println!("i: {}", i);
+        
+        sign = buf[i];
+        i += 2;
+        num_a = 0;
+        while buf[i] > 0x29 && buf[i] < 0x40 {
+            num_a *= 10;
+            num_a += (buf[i] - 0x30) as u64;
+            i += 1;
+        }
+
+        // println!("1 buf[i]: {:x}", buf[i]);
+        
+        if buf[i] == SPACE {
+            i += 1;
+            num_b = 0;
+            while buf[i] > 0x29 && buf[i] < 0x40 {
+                num_b *= 10;
+                num_b += (buf[i] - 0x30) as u64;
+                i += 1;
+            }
+        }
+
+        // println!("2 buf[i]: {:x}", buf[i]);
+        // Past next newline
+        i += 1;
+
+        // println!("{} {} {}", sign as char, num_a, num_b);
+
+        match sign {
+            PLUS => {
+                add_liquidity(&mut price_to_order_queue, num_a, num_b);
+            },
+            MINUS => {
+                remove_order(&mut price_to_order_queue, num_a);
+            },
+            EQUALS => {
+                take_liquidity(&mut price_to_order_queue, num_a);
+            },
+            _ => ()
+        }
+    }
+
+    // panic!("WEEE");
+}
+
+fn run_for_benchmark_by_char() {
+
+    // let buf = unsafe { mmap_stdin() };
+    let buf: &[u8] = "+ 1137 100\n+ 1130 10\n+ 1130 50\n- 0\n+ 1150 200\n= 200\n".as_bytes();
+
+    // BTreeMap of an LinkedList (IndexMap does not allow for the same size value!)
+    // Price -> Sorted Orders
+    // Maybe use a vecdeque we search on removal?
+    // Delay sorting
+    let mut price_to_order_queue: BTreeMap<u64, VecDeque<u64>> = BTreeMap::new();
 
     let mut state = State::ParseSign;
 
-    let mut sign = 0;
+    let mut sign: u8 = 0;
     let mut num_a: u64 = 0;
     let mut num_b: u64= 0;
 
@@ -51,7 +123,7 @@ fn run_for_benchmark_fsm() {
             (State::ParseNumA, NEWLINE, EQUALS) => {
                 // let start = Instant::now();
 
-                // take_liquidity(&mut price_to_order_queue, num_a);
+                take_liquidity(&mut price_to_order_queue, num_a);
 
                 // let duration = start.elapsed();
                 // println!("Time elapsed in take_liquidity() is: {:?}", duration);
@@ -61,7 +133,7 @@ fn run_for_benchmark_fsm() {
             (State::ParseNumA, NEWLINE, MINUS) => {
                 // let start = Instant::now();
 
-                // remove_order(&mut price_to_order_queue, num_a);
+                remove_order(&mut price_to_order_queue, num_a);
 
                 // let duration = start.elapsed();
                 // println!("Time elapsed in remove_order() is: {:?}", duration);
@@ -76,7 +148,7 @@ fn run_for_benchmark_fsm() {
             (State::ParseNumB, NEWLINE, _) => {
                 // let start = Instant::now();
 
-                // add_liquidity(&mut price_to_order_queue, num_a, num_b);
+                add_liquidity(&mut price_to_order_queue, num_a, num_b);
 
                 // let duration = start.elapsed();
                 // println!("Time elapsed in add_liquidity() is: {:?}", duration);
@@ -88,34 +160,6 @@ fn run_for_benchmark_fsm() {
                 num_b += (c as u64) - 0x30;
             }
         }
-    }
-
-    // let duration = start.elapsed();
-    // println!("Time elapsed for parsing w/ book management is: {:?}", duration);
-
-    // println!("{}", take_liquidity(&mut price_to_order_queue, 100));
-}
-
-
-// Even the basic lines + split + getting first element takes twice as long as our parsing fsm
-fn run_for_benchmark_std() {
-
-    let buf: &str = "+ 1137 100\n+ 1130 10\n+ 1130 50\n- 0\n+ 1150 200\n= 200";
-
-    let mut price_to_order_queue: BTreeMap<u64, VecDeque<u64>> = BTreeMap::new();
-
-    let mut state = State::ParseSign;
-
-    let mut sign = 0;
-    let mut num_a: u64 = 0;
-    let mut num_b: u64 = 0;
-    // let mut num_b_str: Option<u8> = None;
-
-    for line in buf.lines() {
-        // println!("line: {}", line);
-        let mut line_split_iter = line.split(' ');
-
-        sign = line_split_iter.next().unwrap().as_bytes()[0];
     }
 }
 
@@ -267,12 +311,12 @@ mod tests {
     use test::Bencher;
 
     #[bench]
-    fn bench_run_fsm(b: &mut Bencher) {
-        b.iter(|| run_for_benchmark_fsm());
+    fn bench_run_by_line(b: &mut Bencher) {
+        b.iter(|| run_for_benchmark_by_line());
     }
 
     #[bench]
-    fn bench_run_std(b: &mut Bencher) {
-        b.iter(|| run_for_benchmark_std());
+    fn bench_run_by_char(b: &mut Bencher) {
+        b.iter(|| run_for_benchmark_by_char());
     }
 }

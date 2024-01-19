@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Instant;
 
-// const PLUS: u8 = 0x2b;
+const PLUS: u8 = 0x2b;
 const MINUS: u8 = 0x2d;
 const EQUALS: u8 = 0x3d;
 const SPACE: u8 = 0x20;
@@ -16,6 +16,7 @@ enum State {
 fn main() {
     let buf = unsafe { mmap_stdin() };
 
+    let buf_len = buf.len();
     // BTreeMap of an LinkedList (IndexMap does not allow for the same size value!)
     // Price -> Sorted Orders
 
@@ -23,11 +24,7 @@ fn main() {
     // Delay sorting
     let mut price_to_order_queue: BTreeMap<u64, VecDeque<u64>> = BTreeMap::new();
 
-    let start = Instant::now();
-
-    let mut state = State::ParseSign;
-
-    let mut sign = 0;
+    let mut sign: u8 = 0;
     let mut num_a: u64 = 0;
     let mut num_b: u64= 0;
 
@@ -40,66 +37,56 @@ fn main() {
     // we also check every stage that the char is in our desired range 0x30 to 0x39
     // we break if it isn't
 
-    for &c in buf {
+    let mut i = 0;
 
-        match (&state, c, sign) {
-            (State::ParseSign, SPACE, _) => {
-                state = State::ParseNumA;
-            },
-            (State::ParseSign, _, _) => {
-                sign = c;
-                num_a = 0;
-            },
-            (State::ParseNumA, SPACE, _) => {
-                num_b = 0;
-                state = State::ParseNumB;
-            },
-            (State::ParseNumA, NEWLINE, EQUALS) => {
-                // let start = Instant::now();
+    while i < buf_len {
+        // println!("i: {}", i);
+        
+        sign = buf[i];
+        i += 2;
+        num_a = 0;
+        while buf[i] > 0x29 && buf[i] < 0x40 {
+            num_a *= 10;
+            num_a += (buf[i] - 0x30) as u64;
+            i += 1;
+        }
 
-                take_liquidity(&mut price_to_order_queue, num_a);
-
-                // let duration = start.elapsed();
-                // println!("Time elapsed in take_liquidity() is: {:?}", duration);
-
-                state = State::ParseSign;
-            },
-            (State::ParseNumA, NEWLINE, MINUS) => {
-                // let start = Instant::now();
-
-                remove_order(&mut price_to_order_queue, num_a);
-
-                // let duration = start.elapsed();
-                // println!("Time elapsed in remove_order() is: {:?}", duration);
-
-                state = State::ParseSign;
-            },
-            (State::ParseNumA, NEWLINE, _) => (),
-            (State::ParseNumA, _, _) => {
-                num_a *= 10;    // 0 when num_a is 0
-                num_a += (c as u64) - 0x30;
-            },
-            (State::ParseNumB, NEWLINE, _) => {
-                // let start = Instant::now();
-
-                add_liquidity(&mut price_to_order_queue, num_a, num_b);
-
-                // let duration = start.elapsed();
-                // println!("Time elapsed in add_liquidity() is: {:?}", duration);
-
-                state = State::ParseSign;
-            },
-            (State::ParseNumB, _, _) => {
-                num_b *= 10;    // 0 when num_b is 0
-                num_b += (c as u64) - 0x30;
+        // println!("1 buf[i]: {:x}", buf[i]);
+        
+        if buf[i] == SPACE {
+            i += 1;
+            num_b = 0;
+            while buf[i] > 0x29 && buf[i] < 0x40 {
+                num_b *= 10;
+                num_b += (buf[i] - 0x30) as u64;
+                i += 1;
             }
+        }
+
+        // println!("2 buf[i]: {:x}", buf[i]);
+        // Past next newline
+        i += 1;
+
+        // println!("{} {} {}", sign as char, num_a, num_b);
+
+        match sign {
+            PLUS => {
+                add_liquidity(&mut price_to_order_queue, num_a, num_b);
+            },
+            MINUS => {
+                remove_order(&mut price_to_order_queue, num_a);
+            },
+            EQUALS => {
+                take_liquidity(&mut price_to_order_queue, num_a);
+            },
+            _ => ()
         }
     }
 
-    let duration = start.elapsed();
-    println!("Time elapsed for parsing w/ book management is: {:?}", duration);
 
-    // println!("{}", take_liquidity(&mut price_to_order_queue, 100));
+    // println!("{}", take_liquidity(&mut price_to_order_queue, 200));
+
+    println!("{}", take_liquidity(&mut price_to_order_queue, 1000));
 }
 
 fn add_liquidity(
