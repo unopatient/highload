@@ -1,5 +1,3 @@
-#![feature(test)]
-
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Instant;
 
@@ -232,17 +230,4 @@ unsafe fn mmap_fd<'a>(fd: i32) -> &'a [u8] {
         panic!("mmap failed, errno {}", *__error());
     }
     std::slice::from_raw_parts(ptr, size as usize)
-}
-
-extern crate test;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use test::Bencher;
-
-    #[bench]
-    fn bench_main(b: &mut Bencher) {
-        b.iter(|| add_two(2));
-    }
 }
