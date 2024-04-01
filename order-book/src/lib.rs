@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Instant;
+pub mod btree;
 
 const PLUS: u8 = 0x2b;
 const MINUS: u8 = 0x2d;
