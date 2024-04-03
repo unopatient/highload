@@ -52,9 +52,9 @@ impl Precalc {
 
         let mut i = 0;
 
-        while (i < B) {
+        while i < B {
             let mut j = i;
-            while (j < B-1) {
+            while j < B-1 {
                 mask[i][j] = -1;
                 j += 1;
             }
@@ -216,5 +216,27 @@ mod tests {
 
         assert_eq!(&first_half_correct, &array.0[0..32]);
         assert_eq!(&second_half_correct, &array.0[32..64]);
+    }
+
+    #[test]
+    fn test_node_insert() {
+        // Set first 32 elements to 1 to 32 (inclusive)
+        let mut array = TestArray([0; 64]);
+
+        let x = 0;
+
+        // Test inserting a 0 at every position
+        for i in 0..32 {
+            array.0[0..32].copy_from_slice(&(1..33).collect::<Vec<i32>>());
+            let array_ptr = array.0.as_mut_ptr();
+
+            let mut correct_insertion = (1..i+1).collect::<Vec<i32>>();
+            correct_insertion.push(x);
+            correct_insertion.append(&mut (i+1..32).collect());  // 32 should be pushed out of bounds
+
+            insert(array_ptr, i, x);
+
+            assert_eq!(&correct_insertion, &array.0[0..32]);
+        }
     }
 }
