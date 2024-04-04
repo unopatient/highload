@@ -2,7 +2,8 @@
 
 use core::arch::x86_64::*;
 
-const R: usize = 100_000_000;
+// const R: usize = 100_000_000;
+const R: usize = 100_000;
 const B: usize = 32;
 
 fn cmp(x: __m256i, node: *const i32) -> __m256i {
@@ -34,7 +35,7 @@ fn move_latter_half(from: *mut i32, to: *mut i32) {
 
     for i in (0..B/2).step_by(8) {
         unsafe {
-            let t = _mm256_load_si256(from.add(B/2+i) as *const __m256i);
+            let t = _mm256_load_si256(from.add(B / 2 + i) as *const __m256i);
             _mm256_store_si256(to.add(i) as *mut __m256i, t);
             _mm256_store_si256(from.add(B/2+i) as *mut __m256i, infs);
         }
@@ -74,7 +75,7 @@ fn insert(node: *mut i32, i: i32, x: i32) {
         unsafe {
             let t = _mm256_load_si256(node.add(j) as *const __m256i);
             let mask = _mm256_load_si256(P.mask[i as usize].as_ptr().add(j) as *const __m256i);      
-            _mm256_maskstore_epi32(node.add(j+1), mask, t);
+            _mm256_maskstore_epi32(node.add(j + 1), mask, t);
         }
     }
     unsafe {
@@ -86,8 +87,8 @@ fn insert(node: *mut i32, i: i32, x: i32) {
 struct BTreeMap {
     tree: [i32; R],
     root: usize,
-    n_tree: i32,
-    height: i32
+    n_tree: usize,
+    height: usize
 }
 
 impl BTreeMap {
@@ -102,7 +103,7 @@ impl BTreeMap {
         Self {
             tree,
             root: 0,
-            n_tree: B as i32,
+            n_tree: B,
             height: 1
         }
     }
@@ -122,14 +123,81 @@ impl BTreeMap {
         self.tree[k + i]
     }
 
-    // // Node level insert
-    // fn insert(node: *const node, i: i32, x: i32) {
-    //     for j in (0..B-8).rev() {
-    //         let t = unsafe{_mm256_load_si256(&node[j] as *const __m256i)};
-    //         let mask = unsafe {_mm256_load_si256(&P.mask[i][j] as *const __m256i)};
-    //         _mm256_maskstore 
-    //     }
-    // }
+    // Tree level insert
+    fn insert(&mut self, _x: i32) {
+
+        // MIND INTEGER TYPE CONVERSIONS WHEN MICRO-OPTIMIZING
+
+        let mut sk = [0; 10];
+        let mut si = [0; 10];
+
+        let mut k = self.root;
+        let x = unsafe{_mm256_set1_epi32(_x)};
+
+        let tree_ptr = self.tree.as_mut_ptr();
+
+        for h in 0..self.height-1 {
+            let i = rank32(x, unsafe{tree_ptr.add(k)}) as usize;
+
+            self.tree[k + i] = if _x > self.tree[k + i] {
+                _x
+            } else {
+                self.tree[k + i]
+            };
+
+            sk[h] = k;
+            si[h] = i;
+
+            k = self.tree[k + B + i] as usize;
+        }
+
+        let mut i = rank32(x, unsafe{tree_ptr.add(k)}) as usize;
+
+        let mut filled = self.tree[k + B - 2] != i32::MAX;
+
+        insert(unsafe{tree_ptr.add(k)}, i as i32, _x);
+
+        if filled {
+            move_latter_half(unsafe{tree_ptr.add(k + B / 2 - 1)}, unsafe{tree_ptr.add(self.n_tree)});
+
+            let mut v = self.tree[k + B / 2 - 1];
+            let mut p = self.n_tree;
+
+            self.n_tree += B;
+
+            for h in (0..=self.height-2).rev() {
+                k = sk[h];
+                i = si[h];
+
+                filled = self.tree[k + B - 3] != i32::MAX;
+
+                insert(unsafe{tree_ptr.add(k)}, i as i32, v);
+                insert(unsafe{tree_ptr.add(k + B)}, i as i32 + 1, p as i32);
+
+                if !filled {
+                    return;
+                }
+
+                move_latter_half(unsafe{tree_ptr.add(k)}, unsafe{tree_ptr.add(self.n_tree)});
+                move_latter_half(unsafe{tree_ptr.add(k + B / 2 - 1)}, unsafe{tree_ptr.add(self.n_tree + B)});
+
+                v = self.tree[k + B / 2 - 1];
+                self.tree[k + B / 2 - 1] = i32::MAX;
+
+                p = self.n_tree;
+                self.n_tree += 2 * B;
+            }
+
+            self.tree[self.n_tree] = v;
+
+            self.tree[self.n_tree + B] = self.root as i32;
+            self.tree[self.n_tree + B + 1] = p as i32;
+
+            self.root = self.n_tree;
+            self.n_tree += 2 * B;
+            self.height += 1;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -225,11 +293,10 @@ mod tests {
 
         let x = 0;
 
-        // Test inserting a 0 at every position
+        // Test inserting a 0 at every position (THIS INSERT DOES NOT ORDER)
         for i in 0..32 {
             array.0[0..32].copy_from_slice(&(1..33).collect::<Vec<i32>>());
             let array_ptr = array.0.as_mut_ptr();
-
             let mut correct_insertion = (1..i+1).collect::<Vec<i32>>();
             correct_insertion.push(x);
             correct_insertion.append(&mut (i+1..32).collect());  // 32 should be pushed out of bounds
@@ -238,5 +305,31 @@ mod tests {
 
             assert_eq!(&correct_insertion, &array.0[0..32]);
         }
+    }
+
+    #[test]
+    fn test_tree_insert() {
+        let mut b_tree = BTreeMap::new();
+
+        let numbers_to_insert = (0..32).rev().collect::<Vec<i32>>();
+
+        // b_tree.insert(2);
+        // b_tree.insert(1);
+
+        for num in numbers_to_insert {
+            b_tree.insert(num);
+        }
+
+        println!("leaf 1 keys: {:?}", &b_tree.tree[0..32]);
+        // println!("leaf 1 indices: {:?}", &b_tree.tree[32..64]);
+        // println!("leaf 2 keys: {:?}", &b_tree.tree[64..96]);
+        // println!("leaf 2 indices: {:?}", &b_tree.tree[96..128]);
+        // println!("root: {:?}", &btree.tree[96..128]);
+
+
+
+        // assert_eq!(5, b_tree.tree[0]);
+        assert_eq!(0, 1);
+
     }
 }
