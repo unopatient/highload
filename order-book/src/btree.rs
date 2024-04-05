@@ -158,14 +158,16 @@ impl BTreeMap {
         insert(unsafe{tree_ptr.add(k)}, i as i32, _x);
 
         if filled {
-            move_latter_half(unsafe{tree_ptr.add(k + B / 2 - 1)}, unsafe{tree_ptr.add(self.n_tree)});
+
+            move_latter_half(unsafe{tree_ptr.add(k)}, unsafe{tree_ptr.add(self.n_tree)});
 
             let mut v = self.tree[k + B / 2 - 1];
             let mut p = self.n_tree;
 
             self.n_tree += B;
 
-            for h in (0..=self.height-2).rev() {
+            // (H-2) down to 0 (inclusive)
+            for h in (0..self.height-1).rev() {
                 k = sk[h];
                 i = si[h];
 
@@ -179,7 +181,7 @@ impl BTreeMap {
                 }
 
                 move_latter_half(unsafe{tree_ptr.add(k)}, unsafe{tree_ptr.add(self.n_tree)});
-                move_latter_half(unsafe{tree_ptr.add(k + B / 2 - 1)}, unsafe{tree_ptr.add(self.n_tree + B)});
+                move_latter_half(unsafe{tree_ptr.add(k + B)}, unsafe{tree_ptr.add(self.n_tree + B)});
 
                 v = self.tree[k + B / 2 - 1];
                 self.tree[k + B / 2 - 1] = i32::MAX;
@@ -308,28 +310,52 @@ mod tests {
     }
 
     #[test]
-    fn test_tree_insert() {
+    fn test_tree_insert_and_lower_bound() {
         let mut b_tree = BTreeMap::new();
 
-        let numbers_to_insert = (0..32).rev().collect::<Vec<i32>>();
+        println!("b_tree instantiated");
 
-        // b_tree.insert(2);
-        // b_tree.insert(1);
+        let numbers_to_insert = (0..64).collect::<Vec<i32>>();
+
+        let mut leaf_1_keys_correct = (0..16).collect::<Vec<i32>>();
+        leaf_1_keys_correct.append(&mut vec![i32::MAX; 16]);
+        let mut leaf_2_keys_correct = (16..32).collect::<Vec<i32>>();
+        leaf_2_keys_correct.append(&mut vec![i32::MAX; 16]);
+        let mut leaf_3_keys_correct = (32..48).collect::<Vec<i32>>();
+        leaf_3_keys_correct.append(&mut vec![i32::MAX; 16]);
+        let mut leaf_4_keys_correct = (48..64).collect::<Vec<i32>>();
+        leaf_4_keys_correct.append(&mut vec![i32::MAX; 16]);
+        let mut root_keys_correct = vec![15,31,47];
+        root_keys_correct.append(&mut vec![i32::MAX; 29]);
+        let mut root_indices_correct = vec![0, 32, 128, 160];
+        root_indices_correct.append(&mut vec![i32::MAX; 28]);
 
         for num in numbers_to_insert {
             b_tree.insert(num);
         }
 
         println!("leaf 1 keys: {:?}", &b_tree.tree[0..32]);
-        // println!("leaf 1 indices: {:?}", &b_tree.tree[32..64]);
-        // println!("leaf 2 keys: {:?}", &b_tree.tree[64..96]);
-        // println!("leaf 2 indices: {:?}", &b_tree.tree[96..128]);
-        // println!("root: {:?}", &btree.tree[96..128]);
+        println!("leaf 2 keys: {:?}", &b_tree.tree[32..64]);
+        println!("root keys: {:?}", &b_tree.tree[64..96]);
+        println!("root indices: {:?}", &b_tree.tree[96..128]);
 
+        assert_eq!(&leaf_1_keys_correct, &b_tree.tree[0..32]);
+        assert_eq!(&leaf_2_keys_correct, &b_tree.tree[32..64]);
+        assert_eq!(&root_keys_correct, &b_tree.tree[64..96]);
+        assert_eq!(&root_indices_correct, &b_tree.tree[96..128]);
+        assert_eq!(&leaf_3_keys_correct, &b_tree.tree[128..160]);
+        assert_eq!(&leaf_4_keys_correct, &b_tree.tree[160..192]);
 
+        for i in 0..64 {
+            assert_eq!(i, b_tree.lower_bound(i));
+        }
 
-        // assert_eq!(5, b_tree.tree[0]);
-        assert_eq!(0, 1);
-
+        let mut another_b_tree = BTreeMap::new();
+        for i in 0..10_000 {
+            another_b_tree.insert(i);
+        }
+        for i in 0..10_000 {
+            assert_eq!(i, another_b_tree.lower_bound(i));
+        }
     }
 }
